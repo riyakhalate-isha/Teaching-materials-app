@@ -73,7 +73,7 @@
   .quote-label { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: #e88f5e; text-transform: uppercase; margin-bottom: 20px; }
   .quote-text { font-size: 17px; line-height: 1.75; color: #fff8e6; font-style: italic; max-width: 720px; margin: 0 auto 20px; transition: opacity 0.8s ease; min-height: 80px; }
   .quote-text.fade { opacity: 0; }
-  .quote-sig { height: 48px; opacity: 0.9; filter: invert(1) sepia(1) saturate(0.5) brightness(1.8); margin-top: 4px; }
+  .quote-sig { height: 48px; opacity: 0.85; filter: invert(1); mix-blend-mode: screen; margin-top: 4px; }
   .quote-dots { display: flex; justify-content: center; gap: 7px; margin-top: 18px; flex-wrap: wrap; max-width: 400px; margin-left: auto; margin-right: auto; }
   .quote-dot { width: 7px; height: 7px; border-radius: 50%; background: #e88f5e; opacity: 0.4; transition: opacity 0.3s; cursor: pointer; }
   .quote-dot.active { opacity: 1; }
@@ -130,7 +130,18 @@
     </div>
     <div class="t-field">
       <label>School</label>
-      <input id="t-school" type="text" placeholder="Enter your school name">
+      <input id="t-school" type="text" list="school-list" placeholder="Type to search school" autocomplete="off">
+      <datalist id="school-list">
+        <option value="SGP">
+        <option value="ERD">
+        <option value="KRR">
+        <option value="TUT">
+        <option value="NGK">
+        <option value="VAN">
+        <option value="DHA">
+        <option value="CUD">
+        <option value="VIL">
+      </datalist>
     </div>
     <div class="t-row">
       <div class="t-field">
@@ -146,7 +157,12 @@
       </div>
       <div class="t-field">
         <label>Section</label>
-        <input id="t-section" type="text" placeholder="e.g. A" maxlength="3">
+        <input id="t-section" type="text" list="section-list" placeholder="e.g. A" maxlength="3" autocomplete="off">
+        <datalist id="section-list">
+          <option value="A">
+          <option value="B">
+          <option value="C">
+        </datalist>
       </div>
     </div>
     <div class="t-error" id="t-error">Please fill in all fields before continuing.</div>
@@ -424,11 +440,18 @@ async function checkEligibility() {
   return true;
 }
 
-// ── Log view (PLACEHOLDER) ─────────────────────────────────
-// This will also be connected to Apps Script in Phase 2B.
+// ── Log view ───────────────────────────────────────────────
+const LOG_URL = 'https://script.google.com/macros/s/AKfycbxdfGfDoguPaSK9_1G-nEp2XoXnMv8U7tyt5DOBtlpSRL0xnxvswhANMKn7QI6zFWhTWA/exec';
+
 function logView() {
-  // PLACEHOLDER: will write to Google Sheet via Apps Script.
-  console.log('[Log]', teacherName, teacherSchool, 'Class', teacherClass, 'Sec', teacherSection, pdfMap[pendingPdfId], new Date().toLocaleString());
+  const params = new URLSearchParams({
+    name:    teacherName,
+    school:  teacherSchool,
+    class:   teacherClass,
+    section: teacherSection,
+    pdf:     pdfMap[pendingPdfId] || ''
+  });
+  fetch(LOG_URL + '?' + params.toString()).catch(() => {});
 }
 
 function showFolders() {
