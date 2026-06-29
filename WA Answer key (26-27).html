@@ -197,7 +197,7 @@
         <label>Section</label>
         <select id="li-section">
           <option value="">Select</option>
-          <option>A</option><option>B</option><option>C</option><option>D</option>
+          <option>A</option><option>B</option><option>C</option>
         </select>
       </div>
     </div>
@@ -459,28 +459,19 @@ async function loadFolders() {
   const grid = document.getElementById('folder-grid');
   try {
     const files   = await driveList(ROOT_ID);
+    // Only show the folder matching the teacher's selected class
+    const targetName = 'Class ' + teacher.classNum;
     const folders = files.filter(f =>
       f.mimeType === 'application/vnd.google-apps.folder' &&
-      !HIDE.includes(f.name.toLowerCase())
+      !HIDE.includes(f.name.toLowerCase()) &&
+      f.name.trim() === targetName
     );
     if (folders.length === 0) {
-      grid.innerHTML = `<div class="state-box"><div class="state-msg">No class folders found</div><div class="state-hint">Make sure the Answer Keys folder is shared as "Anyone with the link can view"</div></div>`;
+      grid.innerHTML = `<div class="state-box"><div class="state-msg">No folder found for ${targetName}</div><div class="state-hint">Make sure a folder named "${targetName}" exists in the Answer Keys folder on Google Drive.</div></div>`;
       return;
     }
-    grid.innerHTML = '';
-    for (const folder of folders) {
-      let countText = '';
-      try {
-        const inner = await driveList(folder.id);
-        const pdfs  = inner.filter(f => f.mimeType === 'application/pdf');
-        countText   = pdfs.length + (pdfs.length === 1 ? ' answer key' : ' answer keys');
-      } catch { countText = 'tap to view'; }
-      const card = document.createElement('div');
-      card.className = 'folder-card';
-      card.innerHTML = `<div class="folder-emoji">📁</div><div class="folder-name">${folder.name}</div><div class="folder-count">${countText}</div>`;
-      card.onclick   = () => openFolder(folder.id, folder.name);
-      grid.appendChild(card);
-    }
+    // Auto-open the matching class folder directly — no extra click needed
+    openFolder(folders[0].id, folders[0].name);
   } catch (err) {
     grid.innerHTML = `<div class="error-box"><div class="error-title">Could not load folders</div><div class="error-text">${err.message}<br><br>Make sure the Answer Keys folder is set to "Anyone with the link can view" in Google Drive.</div></div>`;
   }
@@ -513,7 +504,10 @@ async function openFolder(folderId, folderName) {
           <div class="file-name">${pdf.name}</div>
           <div class="file-date">${date ? 'Updated ' + date : 'PDF Document'}</div>
         </div>
-        <button class="open-btn" onclick="clickPDF('${pdf.id}', ${JSON.stringify(pdf.name)})">↗ Open PDF</button>`;
+        <button class="open-btn">↗ Open PDF</button>`;
+      const pdfId   = pdf.id;
+      const pdfName = pdf.name;
+      card.querySelector('.open-btn').addEventListener('click', function() { clickPDF(pdfId, pdfName); });
       list.appendChild(card);
     });
   } catch (err) {
