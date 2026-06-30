@@ -296,12 +296,10 @@
 
       <!-- FOLDERS VIEW -->
       <div id="view-folders">
-        <div class="section-title">Answer Keys</div>
-        <div class="section-sub">Select a class folder to view its answer keys</div>
         <div id="folder-grid" class="folder-grid">
           <div class="state-box">
             <div class="spinner"></div>
-            <div class="state-msg">Loading class folders…</div>
+            <div class="state-msg">Loading your class…</div>
             <div class="state-hint">Connecting to Google Drive</div>
           </div>
         </div>
@@ -309,12 +307,7 @@
 
       <!-- FILES VIEW -->
       <div id="view-files" style="display:none;">
-        
-        <div class="breadcrumb">
-          <span class="bc-link" onclick="showFolders()">Answer Keys</span>
-          <span class="bc-sep">›</span>
-          <span class="bc-current" id="bc-folder"></span>
-        </div>
+
         <div class="section-title" id="files-title"></div>
         <div class="section-sub">Click "Open PDF" to view the answer key</div>
         <div id="file-list" class="file-list"></div>
@@ -375,6 +368,44 @@ let countdownTimer = null;
 // which only blocks window.open() calls that happen *after* a delay
 // (like our network check or the 3-second countdown).
 let pendingTab = null;
+
+// ── Writing content INTO the pre-opened tab ───────────────
+// Since the teacher's attention moves to the new tab the moment it
+// opens, we show the "checking eligibility" spinner and the success
+// countdown inside that tab itself, instead of on the original page.
+function writeTabLoadingScreen(win) {
+  if (!win || win.closed) return;
+  win.document.open();
+  win.document.write(
+    '<!DOCTYPE html><html><head><meta charset="UTF-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+    '<title>Opening Answer Key…</title><style>' +
+    'body{font-family:"Segoe UI",Arial,sans-serif;background:#fff8e6;color:#1a1a1a;' +
+    'display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;box-sizing:border-box;}' +
+    '.box{max-width:420px;text-align:center;background:#fff;border:2px solid #e88f5e;border-radius:14px;padding:40px 28px;}' +
+    '.spinner{width:38px;height:38px;border:4px solid #e88f5e;border-top-color:#d06b11;border-radius:50%;' +
+    'animation:spin .85s linear infinite;margin:0 auto 18px;}' +
+    '@keyframes spin{to{transform:rotate(360deg);}}' +
+    '.icon{font-size:42px;margin-bottom:12px;}' +
+    'h2{color:#9b4932;font-size:18px;margin:0 0 10px;}' +
+    'p{color:#d06b11;font-size:14px;line-height:1.7;margin:0;}' +
+    '.countdown{margin-top:14px;font-weight:700;color:#9b4932;font-size:14px;}' +
+    '</style></head><body><div class="box" id="tabContent">' +
+    '<div class="spinner"></div><h2>Checking eligibility…</h2>' +
+    '<p>Please wait a moment.</p></div></body></html>'
+  );
+  win.document.close();
+}
+
+function updateTabContent(win, innerHtml) {
+  if (!win || win.closed) return;
+  try {
+    const c = win.document.getElementById('tabContent');
+    if (c) c.innerHTML = innerHtml;
+  } catch (e) {
+    // Tab may have already navigated or been closed — ignore safely
+  }
+}
 
 // ══════════════════════════════════════════════════════════
 // EMBEDDED ASSETS (Logo + Signature)
@@ -489,7 +520,6 @@ async function loadFolders() {
 async function openFolder(folderId, folderName) {
   document.getElementById('view-folders').style.display = 'none';
   document.getElementById('view-files').style.display   = 'block';
-  document.getElementById('bc-folder').textContent      = folderName;
   document.getElementById('files-title').textContent    = folderName;
   const list = document.getElementById('file-list');
   list.innerHTML = `<div class="state-box"><div class="spinner"></div><div class="state-msg">Loading answer keys…</div></div>`;
@@ -583,15 +613,17 @@ function closeConfirm() {
 // ══════════════════════════════════════════════════════════
 async function proceedToEligibility() {
   hideOverlay('confirmOverlay');
-  showOverlay('checkingOverlay');
 
   // Open a blank tab RIGHT NOW, while we are still inside the
   // teacher's tap on "Yes, open this PDF". This is the only moment
   // the browser trusts us to open a tab without blocking it. We will
   // either send this same tab to the real PDF (if eligible) or close
   // it again (if not eligible) — never open a second new tab later.
+  // The "Checking eligibility…" message now lives inside that tab,
+  // since that's the tab the teacher actually ends up looking at.
   if (pendingTab && !pendingTab.closed) pendingTab.close();
   pendingTab = window.open('about:blank', '_blank');
+  writeTabLoadingScreen(pendingTab);
 
   try {
     const payload = {
@@ -612,11 +644,9 @@ async function proceedToEligibility() {
     });
     const data = await res.json();
 
-    hideOverlay('checkingOverlay');
     handleEligibilityResult(data);
 
   } catch (err) {
-    hideOverlay('checkingOverlay');
     if (pendingTab && !pendingTab.closed) { pendingTab.close(); }
     pendingTab = null;
     showResult({
@@ -635,25 +665,22 @@ function handleEligibilityResult(data) {
   // ── Eligible ─────────────────────────────────────────────
   if (data.eligible) {
     const today = new Date().toLocaleDateString('en-IN', {day:'numeric', month:'long', year:'numeric'});
-    showResult({
-      icon:  '✅',
-      title: 'All good!',
-      body:  `Have a great day! Viewed by <strong>${teacher.name}</strong> on <strong>${today}</strong>.<br><br>This PDF will open in a few seconds.`,
-      showDate:    false,
-      showSuccess: true
-    });
     // Log the access (fire and forget)
     logView(pendingPDF.name);
-    // Open PDF after 3 seconds
+    // Show success message + countdown INSIDE the new tab — that's the
+    // tab the teacher actually ends up looking at, since it becomes the PDF.
+    updateTabContent(pendingTab,
+      '<div class="icon">✅</div><h2>All good!</h2>' +
+      '<p>Have a great day! Viewed by <strong>' + teacher.name + '</strong> on <strong>' + today + '</strong>.</p>' +
+      '<div class="countdown" id="tabCountdownText">Opening in 3…</div>'
+    );
     let secs = 3;
-    const countdown = document.getElementById('successCountdown');
-    countdown.style.display = 'block';
-    countdown.textContent = 'Opening in ' + secs + '…';
     if (countdownTimer) clearInterval(countdownTimer);
     countdownTimer = setInterval(function() {
       secs--;
       if (secs <= 0) {
         clearInterval(countdownTimer);
+        countdownTimer = null;
         // Send the already-open tab to the real PDF (no popup blocker
         // issue here, since the tab was opened earlier during the click).
         if (pendingTab && !pendingTab.closed) {
@@ -663,9 +690,14 @@ function handleEligibilityResult(data) {
           window.open('https://drive.google.com/file/d/' + pendingPDF.id + '/view', '_blank');
         }
         pendingTab = null;
-        closeResult();
+        pendingPDF = null;
       } else {
-        countdown.textContent = 'Opening in ' + secs + '…';
+        if (pendingTab && !pendingTab.closed) {
+          try {
+            const cd = pendingTab.document.getElementById('tabCountdownText');
+            if (cd) cd.textContent = 'Opening in ' + secs + '…';
+          } catch (e) {}
+        }
       }
     }, 1000);
     return;
@@ -699,6 +731,10 @@ function handleEligibilityResult(data) {
 
   // ── Near threshold (gap ≤ 2) ──────────────────────────────
   if (data.reason === 'near_threshold') {
+    updateTabContent(pendingTab,
+      '<div class="icon">🔒</div><h2>Waiting…</h2>' +
+      '<p>Please go back to the other tab and enter the date the test was conducted.</p>'
+    );
     showResult({
       icon:  '🔒',
       title: 'Not yet unlocked',
@@ -799,32 +835,35 @@ async function submitTeacherDate() {
   // Unlock
   hideOverlay('resultOverlay');
   const todayStr = today.toLocaleDateString('en-IN', {day:'numeric', month:'long', year:'numeric'});
-  showResult({
-    icon:  '✅',
-    title: 'All good!',
-    body:  `Have a great day! Viewed by <strong>${teacher.name}</strong> on <strong>${todayStr}</strong>.<br><br>This PDF will open in a few seconds.`,
-    showDate:    false,
-    showSuccess: true
-  });
   logView(pendingPDF.name);
+  // Show success message + countdown INSIDE the new tab, same as the
+  // direct-eligible path above.
+  updateTabContent(pendingTab,
+    '<div class="icon">✅</div><h2>All good!</h2>' +
+    '<p>Have a great day! Viewed by <strong>' + teacher.name + '</strong> on <strong>' + todayStr + '</strong>.</p>' +
+    '<div class="countdown" id="tabCountdownText">Opening in 3…</div>'
+  );
   let secs = 3;
-  const countdown = document.getElementById('successCountdown');
-  countdown.style.display = 'block';
-  countdown.textContent   = 'Opening in ' + secs + '…';
   if (countdownTimer) clearInterval(countdownTimer);
   countdownTimer = setInterval(function() {
     secs--;
     if (secs <= 0) {
       clearInterval(countdownTimer);
+      countdownTimer = null;
       if (pendingTab && !pendingTab.closed) {
         pendingTab.location = 'https://drive.google.com/file/d/' + pendingPDF.id + '/view';
       } else {
         window.open('https://drive.google.com/file/d/' + pendingPDF.id + '/view', '_blank');
       }
       pendingTab = null;
-      closeResult();
+      pendingPDF = null;
     } else {
-      countdown.textContent = 'Opening in ' + secs + '…';
+      if (pendingTab && !pendingTab.closed) {
+        try {
+          const cd = pendingTab.document.getElementById('tabCountdownText');
+          if (cd) cd.textContent = 'Opening in ' + secs + '…';
+        } catch (e) {}
+      }
     }
   }, 1000);
 }
