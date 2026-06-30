@@ -309,7 +309,7 @@
 
       <!-- FILES VIEW -->
       <div id="view-files" style="display:none;">
-        <button class="back-btn" onclick="showFolders()">← Back to Classes</button>
+        
         <div class="breadcrumb">
           <span class="bc-link" onclick="showFolders()">Answer Keys</span>
           <span class="bc-sep">›</span>
@@ -366,6 +366,15 @@ let pendingPDF = null;
 
 // ── Countdown timer reference ─────────────────────────────
 let countdownTimer = null;
+
+// ── Pre-opened tab reference (popup-blocker fix) ──────────
+// A blank tab is opened the instant the teacher taps a button
+// (still inside the trusted "user click" moment), then later we
+// just navigate that same tab to the real PDF link once we know
+// the teacher is eligible. This avoids the browser's popup blocker,
+// which only blocks window.open() calls that happen *after* a delay
+// (like our network check or the 3-second countdown).
+let pendingTab = null;
 
 // ══════════════════════════════════════════════════════════
 // EMBEDDED ASSETS (Logo + Signature)
@@ -576,6 +585,14 @@ async function proceedToEligibility() {
   hideOverlay('confirmOverlay');
   showOverlay('checkingOverlay');
 
+  // Open a blank tab RIGHT NOW, while we are still inside the
+  // teacher's tap on "Yes, open this PDF". This is the only moment
+  // the browser trusts us to open a tab without blocking it. We will
+  // either send this same tab to the real PDF (if eligible) or close
+  // it again (if not eligible) — never open a second new tab later.
+  if (pendingTab && !pendingTab.closed) pendingTab.close();
+  pendingTab = window.open('about:blank', '_blank');
+
   try {
     const payload = {
       action:    'checkEligibility',
@@ -600,6 +617,8 @@ async function proceedToEligibility() {
 
   } catch (err) {
     hideOverlay('checkingOverlay');
+    if (pendingTab && !pendingTab.closed) { pendingTab.close(); }
+    pendingTab = null;
     showResult({
       icon:  '⚠️',
       title: 'Connection error',
@@ -635,7 +654,15 @@ function handleEligibilityResult(data) {
       secs--;
       if (secs <= 0) {
         clearInterval(countdownTimer);
-        window.open('https://drive.google.com/file/d/' + pendingPDF.id + '/view', '_blank');
+        // Send the already-open tab to the real PDF (no popup blocker
+        // issue here, since the tab was opened earlier during the click).
+        if (pendingTab && !pendingTab.closed) {
+          pendingTab.location = 'https://drive.google.com/file/d/' + pendingPDF.id + '/view';
+        } else {
+          // Fallback, in case the tab was somehow closed by the teacher
+          window.open('https://drive.google.com/file/d/' + pendingPDF.id + '/view', '_blank');
+        }
+        pendingTab = null;
         closeResult();
       } else {
         countdown.textContent = 'Opening in ' + secs + '…';
@@ -646,6 +673,7 @@ function handleEligibilityResult(data) {
 
   // ── No portion data ───────────────────────────────────────
   if (data.reason === 'no_portion_data') {
+    closePendingTab();
     showResult({
       icon:  'ℹ️',
       title: 'Portion data not found',
@@ -658,6 +686,7 @@ function handleEligibilityResult(data) {
 
   // ── PDF naming / mapping issue ────────────────────────────
   if (data.reason === 'no_mapping') {
+    closePendingTab();
     showResult({
       icon:  '⚠️',
       title: 'PDF name issue',
@@ -685,6 +714,7 @@ function handleEligibilityResult(data) {
 
   // ── Far from threshold (gap > 2) ──────────────────────────
   if (data.reason === 'far_from_threshold') {
+    closePendingTab();
     showResult({
       icon:  '🔒',
       title: 'Not yet unlocked',
@@ -699,6 +729,7 @@ function handleEligibilityResult(data) {
   }
 
   // ── Fallback ──────────────────────────────────────────────
+  closePendingTab();
   showResult({
     icon:  '🔒',
     title: 'Not yet unlocked',
@@ -737,6 +768,7 @@ async function submitTeacherDate() {
 
   // Far mode: date entered but WS is too far from threshold → still block
   if (farMode) {
+    closePendingTab();
     errEl.textContent   = `Namaskaram ${teacher.name}, the portion for ${label} seems too far from the threshold for WA ${pendingPDF.waNum} to have been conducted yet. If you believe this is an error, please contact your incharge teacher.`;
     errEl.style.display = 'block';
     return;
@@ -784,7 +816,12 @@ async function submitTeacherDate() {
     secs--;
     if (secs <= 0) {
       clearInterval(countdownTimer);
-      window.open('https://drive.google.com/file/d/' + pendingPDF.id + '/view', '_blank');
+      if (pendingTab && !pendingTab.closed) {
+        pendingTab.location = 'https://drive.google.com/file/d/' + pendingPDF.id + '/view';
+      } else {
+        window.open('https://drive.google.com/file/d/' + pendingPDF.id + '/view', '_blank');
+      }
+      pendingTab = null;
       closeResult();
     } else {
       countdown.textContent = 'Opening in ' + secs + '…';
@@ -797,21 +834,17 @@ async function submitTeacherDate() {
 // ══════════════════════════════════════════════════════════
 async function logView(pdfName) {
   try {
-    const today = new Date().toLocaleDateString('en-IN');
-    const payload = {
-      teacherName: teacher.name,
-      school:      teacher.school,
-      classNum:    teacher.classNum,
-      section:     teacher.section,
-      typeCode:    teacher.typeCode,
-      pdfViewed:   pdfName,
-      timestamp:   today
-    };
-    await fetch(LOGGING_URL, {
-      method:  'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body:    JSON.stringify(payload)
+    // The logging Apps Script (doGet) expects a plain GET request with
+    // these exact parameter names: name, school, class, section, pdf.
+    // It builds its own timestamp on the server side, so we don't send one.
+    const params = new URLSearchParams({
+      name:    teacher.name,
+      school:  teacher.school,
+      class:   teacher.classNum,
+      section: teacher.section,
+      pdf:     pdfName
     });
+    await fetch(LOGGING_URL + '?' + params.toString(), { method: 'GET' });
   } catch(e) {
     // Logging failure is silent — never block teacher from viewing
   }
@@ -837,6 +870,17 @@ function closeResult() {
   if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
   hideOverlay('resultOverlay');
   pendingPDF = null;
+  // If a blank pre-opened tab is still sitting there (e.g. the teacher
+  // closed this dialog instead of completing the date entry), close it
+  // so they don't end up with a stray empty tab.
+  closePendingTab();
+}
+
+// Closes the pre-opened blank tab, if one is open and hasn't been sent
+// to the real PDF yet. Safe to call even if there's nothing to close.
+function closePendingTab() {
+  if (pendingTab && !pendingTab.closed) pendingTab.close();
+  pendingTab = null;
 }
 
 // ══════════════════════════════════════════════════════════
