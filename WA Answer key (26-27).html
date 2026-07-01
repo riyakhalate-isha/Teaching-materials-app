@@ -898,7 +898,13 @@ async function submitTeacherDate() {
     return;
   }
 
-  // Near mode: valid date, save and unlock
+  // Near mode: valid date — open blank tab NOW while still inside the
+  // user's click, before any await, so popup blocker won't trigger.
+  pendingTab = window.open('about:blank', '_blank');
+  writeTabLoadingScreen(pendingTab);
+  hideOverlay('resultOverlay');
+
+  // Save and unlock
   try {
     const payload = {
       action:      'saveTeacherDate',
@@ -921,8 +927,6 @@ async function submitTeacherDate() {
     // Save failed silently — still unlock since date is valid
   }
 
-  // Unlock
-  hideOverlay('resultOverlay');
   const todayStr = today.toLocaleDateString('en-IN', {day:'numeric', month:'long', year:'numeric'});
   logView(pendingPDF.name);
   startCountdownAndOpen(pendingPDF.id, teacher.name, todayStr);
