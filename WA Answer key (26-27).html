@@ -736,21 +736,10 @@ function handleEligibilityResult(data) {
       return;
     }
 
-    // No InCharge date — ask viewing teacher to enter date
-    updateTabContent(pendingTab,
-      '<div class="icon">🔒</div><h2>Waiting…</h2>' +
-      '<p>Please go back to the other tab and enter the date the test was conducted.</p>'
-    );
-    showResult({
-      icon:  '🔒',
-      title: 'Not yet unlocked',
-      body:  `Namaskaram <strong>${teacher.name}</strong>, it seems like this WA has not yet been conducted for <strong>${schoolClass}</strong>. Please check back once the test is conducted.`,
-      showDate:    true,
-      showSuccess: false,
-      savedDate:   data.savedDate || '',
-      gap:         data.gap,
-      farMode:     false
-    });
+    // No InCharge date — write date entry form INTO the new tab.
+    // Teacher fills in the date there; main tab stays in the background.
+    const prefillDate = data.savedDate || '';
+    writeTabDateForm(pendingTab, teacher.name, schoolClass, pendingPDF.waNum, prefillDate);
     return;
   }
 
@@ -784,6 +773,88 @@ function handleEligibilityResult(data) {
 // ══════════════════════════════════════════════════════════
 // TEACHER DATE SUBMISSION
 // ══════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════
+// WRITE DATE FORM INTO NEW TAB (near_threshold, no InCharge date)
+// Teacher fills the date directly in the new tab.
+// ══════════════════════════════════════════════════════════
+function writeTabDateForm(tab, teacherName, schoolClass, waNum, prefillDate) {
+  if (!tab || tab.closed) return;
+  const formHtml =
+    '<div class="icon">\uD83D\uDD12</div>' +
+    '<h2>Not yet unlocked</h2>' +
+    '<p>Namaskaram <strong>' + teacherName + '</strong>! It seems like WA ' + waNum +
+    ' has not yet been conducted for <strong>' + schoolClass + '</strong>. ' +
+    'Please check back once the test is conducted. If you have conducted this test, please select a date to proceed.</p>' +
+    '<div style="margin:20px 0;text-align:left;">' +
+      '<label style="font-size:11px;font-weight:700;letter-spacing:1.5px;color:#d06b11;text-transform:uppercase;">Date test was conducted</label>' +
+      '<input type="date" id="tabDateInput" value="' + prefillDate + '" ' +
+        'style="width:100%;margin-top:8px;padding:12px;border:1.5px solid #e88f5e;border-radius:8px;font-size:14px;background:#fff8e6;color:#1a1a1a;box-sizing:border-box;" />' +
+      '<div id="tabDateError" style="display:none;color:#c0392b;font-size:13px;margin-top:8px;line-height:1.5;"></div>' +
+    '</div>' +
+    '<button onclick="submitTabDate()" ' +
+      'style="width:100%;background:#d06b11;color:#fff;border:none;border-radius:8px;padding:14px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:10px;">Submit date</button>' +
+    '<button onclick="window.close()" ' +
+      'style="width:100%;background:none;border:2px solid #e88f5e;color:#9b4932;border-radius:8px;padding:11px;font-size:14px;font-weight:700;cursor:pointer;">Close</button>' +
+    '<script>' +
+    'function submitTabDate(){' +
+      'var val=document.getElementById("tabDateInput").value;' +
+      'var errEl=document.getElementById("tabDateError");' +
+      'errEl.style.display="none";' +
+      'if(!val){errEl.textContent="Please enter a date.";errEl.style.display="block";return;}' +
+      'window.opener.submitTeacherDateFromTab(val);' +
+    '}' +
+    '<\/script>';
+  updateTabContent(tab, formHtml);
+}
+
+// Called by the new tab's Submit button via window.opener
+async function submitTeacherDateFromTab(dateVal) {
+  if (!pendingPDF) return;
+  const entered = new Date(dateVal + 'T00:00:00');
+  const today   = new Date(); today.setHours(0,0,0,0);
+
+  // Date is in the future — show error inside the new tab
+  if (entered > today) {
+    if (pendingTab && !pendingTab.closed) {
+      try {
+        const errEl = pendingTab.document.getElementById('tabDateError');
+        if (errEl) {
+          errEl.textContent   = 'The date you entered is in the future. Please check back on or after that date.';
+          errEl.style.display = 'block';
+        }
+      } catch(e) {}
+    }
+    return;
+  }
+
+  // Valid date — save it, log the view, start countdown in the same tab
+  try {
+    const payload = {
+      action:      'saveTeacherDate',
+      school:      teacher.school,
+      term:        pendingPDF.term,
+      classNum:    pendingPDF.classNum,
+      section:     teacher.section,
+      waNum:       pendingPDF.waNum,
+      pdfType:     pendingPDF.pdfType,
+      typeCode:    teacher.typeCode,
+      teacherName: teacher.name,
+      date:        dateVal
+    };
+    await fetch(ELIGIBILITY_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body:    JSON.stringify(payload)
+    });
+  } catch(e) {
+    // Save failed silently — still unlock since date is valid
+  }
+
+  logView(pendingPDF.name);
+  const todayStr = today.toLocaleDateString('en-IN', {day:'numeric', month:'long', year:'numeric'});
+  startCountdownAndOpen(pendingPDF.id, teacher.name, todayStr);
+}
+
 async function submitTeacherDate() {
   const dateVal  = document.getElementById('teacherDateInput').value;
   const errEl    = document.getElementById('dateError');
@@ -804,7 +875,7 @@ async function submitTeacherDate() {
 
   // Date is in the future
   if (entered > today) {
-    errEl.textContent   = 'The date you entered is in the future. Please enter the date the test was actually conducted.';
+    errEl.textContent   = 'The date you entered is in the future. Please check back on or after that date.';
     errEl.style.display = 'block';
     return;
   }
