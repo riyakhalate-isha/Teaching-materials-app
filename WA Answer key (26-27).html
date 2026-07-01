@@ -326,6 +326,22 @@ let teacher = { name:'', school:'', classNum:'', section:'', typeCode:'' };
 let pendingPDF = null;
 // { id, name, waNum, term, pdfType, classNum }
 
+// ── Date display formatter ────────────────────────────────────
+// Converts a YYYY-MM-DD string to display format e.g. "15th Jun"
+// ONLY used for what the teacher sees on screen — never for
+// reading/writing to sheets (those stay as YYYY-MM-DD).
+function formatDisplayDate(ymd) {
+  var parts  = ymd.split('-');
+  var day    = parseInt(parts[2], 10);
+  var month  = parseInt(parts[1], 10) - 1;
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var sfx    = 'th';
+  if      (day % 10 === 1 && day !== 11) sfx = 'st';
+  else if (day % 10 === 2 && day !== 12) sfx = 'nd';
+  else if (day % 10 === 3 && day !== 13) sfx = 'rd';
+  return day + sfx + ' ' + months[month];
+}
+
 // ── Countdown timer reference ─────────────────────────────
 let countdownTimer = null;
 
@@ -421,7 +437,7 @@ function submitLogin() {
   // Update chip in header
   const typeLabel = typeCode === 'BL' ? 'BL' : 'Regular';
   document.getElementById('teacherChipText').textContent =
-    name + ' · ' + school + ' · Class ' + classNum + section + ' · ' + typeLabel;
+    name + ' · ' + school + ' · ' + classNum + section + ' · ' + typeLabel;
 
   // Hide login, show app
   document.getElementById('loginOverlay').style.display = 'none';
@@ -566,7 +582,7 @@ function clickPDF(fileId, fileName) {
   const typeLabel = teacher.typeCode === 'BL' ? 'BL' : 'Regular';
   document.getElementById('confirmMsg').innerHTML =
     `Namaskaram <strong>${teacher.name}</strong>! Please confirm you are viewing this answer key for ` +
-    `<strong>${teacher.school} Class ${teacher.classNum}${teacher.section}</strong> (${typeLabel}).`;
+    `<strong>${teacher.school} ${teacher.classNum}${teacher.section}</strong> (${typeLabel}).`;
   document.getElementById('confirmPdfName').textContent = fileName;
   showOverlay('confirmOverlay');
 }
@@ -663,7 +679,9 @@ function startCountdownAndOpen(pdfId, teacherName, dateLabel) {
 }
 
 function handleEligibilityResult(data) {
-  const label = teacher.school + ' Class ' + pendingPDF.classNum + ' Section ' + teacher.section;
+  // "4B" format everywhere — not "Class 4 Section B"
+  const classSection = pendingPDF.classNum + teacher.section;
+  const schoolClass  = teacher.school + ' ' + classSection;
 
   // ── Eligible ─────────────────────────────────────────────
   if (data.eligible) {
@@ -673,13 +691,16 @@ function handleEligibilityResult(data) {
     return;
   }
 
-  // ── No portion data ───────────────────────────────────────
+  // ── No portion data for last Friday ──────────────────────
   if (data.reason === 'no_portion_data') {
     closePendingTab();
+    const fridayStr = data.lastFridayDate
+      ? formatDisplayDate(data.lastFridayDate)
+      : 'last Friday';
     showResult({
       icon:  'ℹ️',
       title: 'Portion data not found',
-      body:  `It seems that the portion data has not been filled for <strong>${label}</strong>. Please contact your InCharge teacher.`,
+      body:  `It seems that the portion data has not been filled for <strong>${schoolClass}</strong> for last Friday, <strong>${fridayStr}</strong>. Please contact InCharge teacher.`,
       showDate:    false,
       showSuccess: false
     });
@@ -701,6 +722,21 @@ function handleEligibilityResult(data) {
 
   // ── Near threshold (gap ≤ 2) ──────────────────────────────
   if (data.reason === 'near_threshold') {
+
+    // InCharge has a future date — show the scheduled-date message
+    if (data.dateSource === 'incharge' && data.savedDate) {
+      closePendingTab();
+      showResult({
+        icon:  '📅',
+        title: 'Not yet unlocked',
+        body:  `Namaskaram <strong>${teacher.name}</strong>! The answer key for <strong>${schoolClass}</strong> is scheduled to unlock on <strong>${formatDisplayDate(data.savedDate)}</strong>, based on the test plan that was shared with the InCharge teacher. Please check back on or after that date.<br><br>If the test was conducted earlier than planned, please contact the CAT team to update the schedule.`,
+        showDate:    false,
+        showSuccess: false
+      });
+      return;
+    }
+
+    // No InCharge date — ask viewing teacher to enter date
     updateTabContent(pendingTab,
       '<div class="icon">🔒</div><h2>Waiting…</h2>' +
       '<p>Please go back to the other tab and enter the date the test was conducted.</p>'
@@ -708,7 +744,7 @@ function handleEligibilityResult(data) {
     showResult({
       icon:  '🔒',
       title: 'Not yet unlocked',
-      body:  `Namaskaram <strong>${teacher.name}</strong>, it seems like this WA has not yet been conducted for <strong>${label}</strong>. Please check back once the test is conducted.`,
+      body:  `Namaskaram <strong>${teacher.name}</strong>, it seems like this WA has not yet been conducted for <strong>${schoolClass}</strong>. Please check back once the test is conducted.`,
       showDate:    true,
       showSuccess: false,
       savedDate:   data.savedDate || '',
@@ -724,7 +760,7 @@ function handleEligibilityResult(data) {
     showResult({
       icon:  '🔒',
       title: 'Not yet unlocked',
-      body:  `Namaskaram <strong>${teacher.name}</strong>, it seems like this WA has not yet been conducted for <strong>${label}</strong>. Please check back once the test is conducted.`,
+      body:  `Namaskaram <strong>${teacher.name}</strong>, it seems like this WA has not yet been conducted for <strong>${schoolClass}</strong>. Please check back once the test is conducted.`,
       showDate:    true,
       showSuccess: false,
       savedDate:   data.savedDate || '',
@@ -739,7 +775,7 @@ function handleEligibilityResult(data) {
   showResult({
     icon:  '🔒',
     title: 'Not yet unlocked',
-    body:  `This answer key is not yet available for <strong>${label}</strong>. Please try again later.`,
+    body:  `This answer key is not yet available for <strong>${schoolClass}</strong>. Please try again later.`,
     showDate:    false,
     showSuccess: false
   });
@@ -752,7 +788,8 @@ async function submitTeacherDate() {
   const dateVal  = document.getElementById('teacherDateInput').value;
   const errEl    = document.getElementById('dateError');
   const farMode  = document.getElementById('dateEntrySection').dataset.farMode === 'true';
-  const label    = teacher.school + ' Class ' + pendingPDF.classNum + ' Section ' + teacher.section;
+  const classSection = pendingPDF.classNum + teacher.section;
+  const label         = teacher.school + ' ' + classSection;
 
   errEl.style.display = 'none';
 
@@ -775,7 +812,7 @@ async function submitTeacherDate() {
   // Far mode: date entered but WS is too far from threshold → still block
   if (farMode) {
     closePendingTab();
-    errEl.textContent   = `Namaskaram ${teacher.name}, the portion for ${label} seems too far from the threshold for WA ${pendingPDF.waNum} to have been conducted yet. If you believe this is an error, please contact your incharge teacher.`;
+    errEl.textContent   = `Namaskaram ${teacher.name}, the portion for ${label} seems too far from the threshold for WA ${pendingPDF.waNum} to have been conducted yet. If the above information is wrong, and you have already conducted the test, please contact InCharge teacher or the Principal or VP.`;
     errEl.style.display = 'block';
     return;
   }
