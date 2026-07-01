@@ -40,20 +40,11 @@
 
   /* ── FOLDERS ─────────────────────────────────────────────── */
   .folder-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 16px; }
-  .folder-card { background: #ffffff; border: 2px solid #e88f5e; border-radius: 14px; padding: 24px 16px 20px; cursor: pointer; text-align: center; transition: all 0.18s; }
-  .folder-card:hover { border-color: #d06b11; background: #fff8e6; transform: translateY(-3px); box-shadow: 0 8px 20px rgba(208,107,17,0.12); }
   .folder-emoji { font-size: 36px; margin-bottom: 10px; }
   .folder-name { font-size: 14px; font-weight: 700; color: #9b4932; }
   .folder-count { font-size: 12px; color: #d06b11; margin-top: 4px; }
 
   /* ── FILES ───────────────────────────────────────────────── */
-  .breadcrumb { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; font-size: 13px; flex-wrap: wrap; }
-  .bc-link { color: #d06b11; cursor: pointer; font-weight: 600; }
-  .bc-link:hover { color: #9b4932; text-decoration: underline; }
-  .bc-sep { color: #e88f5e; }
-  .bc-current { color: #9b4932; font-weight: 700; }
-  .back-btn { display: inline-flex; align-items: center; gap: 7px; background: none; border: 2px solid #e88f5e; color: #9b4932; border-radius: 8px; padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer; margin-bottom: 18px; transition: all 0.15s; }
-  .back-btn:hover { background: #fff0e0; border-color: #d06b11; }
   .file-list { display: flex; flex-direction: column; gap: 12px; }
   .file-card { background: #ffffff; border: 1.5px solid #e88f5e; border-radius: 12px; padding: 14px 18px; display: flex; align-items: center; gap: 14px; transition: all 0.15s; }
   .file-card:hover { border-color: #d06b11; background: #fff8e6; box-shadow: 0 4px 14px rgba(208,107,17,0.09); }
@@ -127,7 +118,6 @@
 
   /* ── RESULT POPUP ────────────────────────────────────────── */
   .result-icon { font-size: 40px; text-align: center; margin-bottom: 12px; }
-  .result-note { font-size: 12px; color: #d06b11; margin-top: 12px; padding-top: 12px; border-top: 1px solid #f0e0cc; line-height: 1.6; }
   .date-field { margin-top: 14px; }
   .date-field label { display: block; font-size: 12px; font-weight: 700; color: #9b4932; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
   .date-field input[type=date] { width: 100%; padding: 9px 12px; border: 1.5px solid #e88f5e; border-radius: 8px; font-size: 14px; color: #1a1a1a; background: #fff8e6; outline: none; font-family: inherit; }
@@ -140,9 +130,6 @@
   .success-countdown { font-size: 12px; color: #888; text-align: center; margin-top: 16px; }
 
   /* ── SPINNER POPUP ───────────────────────────────────────── */
-  .checking-box { text-align: center; padding: 12px 0; }
-  .checking-box .spinner { margin-bottom: 12px; }
-  .checking-box p { font-size: 14px; color: #9b4932; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -223,18 +210,6 @@
 </div>
 
 <!-- ══════════════════════════════════════════════════════════
-     CHECKING POPUP (spinner while eligibility runs)
-══════════════════════════════════════════════════════════ -->
-<div class="popup-overlay" id="checkingOverlay">
-  <div class="popup-card">
-    <div class="checking-box">
-      <div class="spinner"></div>
-      <p>Checking eligibility…</p>
-    </div>
-  </div>
-</div>
-
-<!-- ══════════════════════════════════════════════════════════
      RESULT POPUP (success or blocked)
 ══════════════════════════════════════════════════════════ -->
 <div class="popup-overlay" id="resultOverlay">
@@ -245,9 +220,6 @@
 
     <!-- Date entry section (shown when near/far threshold) -->
     <div id="dateEntrySection" style="display:none;">
-      <div class="result-note">
-        If you have already conducted this test, please enter the date it was conducted.
-      </div>
       <div class="date-field">
         <label>Date test was conducted</label>
         <input type="date" id="teacherDateInput" />
@@ -255,9 +227,6 @@
       <div class="date-error" id="dateError"></div>
       <button class="date-submit-btn" onclick="submitTeacherDate()">Submit date</button>
     </div>
-
-    <!-- Countdown (shown on success) -->
-    <div class="success-countdown" id="successCountdown" style="display:none;"></div>
 
     <div class="popup-actions" style="margin-top:18px;">
       <button class="btn-cancel" id="resultCloseBtn" onclick="closeResult()">Close</button>
@@ -360,6 +329,11 @@ let pendingPDF = null;
 // ── Countdown timer reference ─────────────────────────────
 let countdownTimer = null;
 
+// ── Quote rotation timer ───────────────────────────────────
+// Tracked so we can clear it if initQuotes() is called again
+// (e.g. teacher changes their details and re-submits login).
+let quoteTimer = null;
+
 // ── Pre-opened tab reference (popup-blocker fix) ──────────
 // A blank tab is opened the instant the teacher taps a button
 // (still inside the trusted "user click" moment), then later we
@@ -410,7 +384,6 @@ function updateTabContent(win, innerHtml) {
 // ══════════════════════════════════════════════════════════
 // EMBEDDED ASSETS (Logo + Signature)
 // ══════════════════════════════════════════════════════════
-const LOGO_B64 = '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';
 
 // sig placeholder removed
 
@@ -554,11 +527,6 @@ async function openFolder(folderId, folderName) {
   }
 }
 
-function showFolders() {
-  document.getElementById('view-folders').style.display = 'block';
-  document.getElementById('view-files').style.display   = 'none';
-}
-
 function switchTab(el, tab) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
@@ -659,47 +627,49 @@ async function proceedToEligibility() {
   }
 }
 
+
+// ══════════════════════════════════════════════════════════
+// COUNTDOWN HELPER — shared by eligible + date-submit paths
+// ══════════════════════════════════════════════════════════
+function startCountdownAndOpen(pdfId, teacherName, dateLabel) {
+  updateTabContent(pendingTab,
+    '<div class="icon">✅</div><h2>All good!</h2>' +
+    '<p>Have a great day! Viewed by <strong>' + teacherName + '</strong> on <strong>' + dateLabel + '</strong>.</p>' +
+    '<div class="countdown" id="tabCountdownText">Opening in 3…</div>'
+  );
+  let secs = 3;
+  if (countdownTimer) clearInterval(countdownTimer);
+  countdownTimer = setInterval(function() {
+    secs--;
+    if (secs <= 0) {
+      clearInterval(countdownTimer);
+      countdownTimer = null;
+      if (pendingTab && !pendingTab.closed) {
+        pendingTab.location = 'https://drive.google.com/file/d/' + pdfId + '/view';
+      } else {
+        window.open('https://drive.google.com/file/d/' + pdfId + '/view', '_blank');
+      }
+      pendingTab = null;
+      pendingPDF = null;
+    } else {
+      if (pendingTab && !pendingTab.closed) {
+        try {
+          const cd = pendingTab.document.getElementById('tabCountdownText');
+          if (cd) cd.textContent = 'Opening in ' + secs + '…';
+        } catch (e) {}
+      }
+    }
+  }, 1000);
+}
+
 function handleEligibilityResult(data) {
   const label = teacher.school + ' Class ' + pendingPDF.classNum + ' Section ' + teacher.section;
 
   // ── Eligible ─────────────────────────────────────────────
   if (data.eligible) {
     const today = new Date().toLocaleDateString('en-IN', {day:'numeric', month:'long', year:'numeric'});
-    // Log the access (fire and forget)
     logView(pendingPDF.name);
-    // Show success message + countdown INSIDE the new tab — that's the
-    // tab the teacher actually ends up looking at, since it becomes the PDF.
-    updateTabContent(pendingTab,
-      '<div class="icon">✅</div><h2>All good!</h2>' +
-      '<p>Have a great day! Viewed by <strong>' + teacher.name + '</strong> on <strong>' + today + '</strong>.</p>' +
-      '<div class="countdown" id="tabCountdownText">Opening in 3…</div>'
-    );
-    let secs = 3;
-    if (countdownTimer) clearInterval(countdownTimer);
-    countdownTimer = setInterval(function() {
-      secs--;
-      if (secs <= 0) {
-        clearInterval(countdownTimer);
-        countdownTimer = null;
-        // Send the already-open tab to the real PDF (no popup blocker
-        // issue here, since the tab was opened earlier during the click).
-        if (pendingTab && !pendingTab.closed) {
-          pendingTab.location = 'https://drive.google.com/file/d/' + pendingPDF.id + '/view';
-        } else {
-          // Fallback, in case the tab was somehow closed by the teacher
-          window.open('https://drive.google.com/file/d/' + pendingPDF.id + '/view', '_blank');
-        }
-        pendingTab = null;
-        pendingPDF = null;
-      } else {
-        if (pendingTab && !pendingTab.closed) {
-          try {
-            const cd = pendingTab.document.getElementById('tabCountdownText');
-            if (cd) cd.textContent = 'Opening in ' + secs + '…';
-          } catch (e) {}
-        }
-      }
-    }, 1000);
+    startCountdownAndOpen(pendingPDF.id, teacher.name, today);
     return;
   }
 
@@ -836,36 +806,7 @@ async function submitTeacherDate() {
   hideOverlay('resultOverlay');
   const todayStr = today.toLocaleDateString('en-IN', {day:'numeric', month:'long', year:'numeric'});
   logView(pendingPDF.name);
-  // Show success message + countdown INSIDE the new tab, same as the
-  // direct-eligible path above.
-  updateTabContent(pendingTab,
-    '<div class="icon">✅</div><h2>All good!</h2>' +
-    '<p>Have a great day! Viewed by <strong>' + teacher.name + '</strong> on <strong>' + todayStr + '</strong>.</p>' +
-    '<div class="countdown" id="tabCountdownText">Opening in 3…</div>'
-  );
-  let secs = 3;
-  if (countdownTimer) clearInterval(countdownTimer);
-  countdownTimer = setInterval(function() {
-    secs--;
-    if (secs <= 0) {
-      clearInterval(countdownTimer);
-      countdownTimer = null;
-      if (pendingTab && !pendingTab.closed) {
-        pendingTab.location = 'https://drive.google.com/file/d/' + pendingPDF.id + '/view';
-      } else {
-        window.open('https://drive.google.com/file/d/' + pendingPDF.id + '/view', '_blank');
-      }
-      pendingTab = null;
-      pendingPDF = null;
-    } else {
-      if (pendingTab && !pendingTab.closed) {
-        try {
-          const cd = pendingTab.document.getElementById('tabCountdownText');
-          if (cd) cd.textContent = 'Opening in ' + secs + '…';
-        } catch (e) {}
-      }
-    }
-  }, 1000);
+  startCountdownAndOpen(pendingPDF.id, teacher.name, todayStr);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -897,8 +838,6 @@ function showResult(opts) {
   document.getElementById('resultTitle').textContent          = opts.title || '';
   document.getElementById('resultBody').innerHTML             = opts.body || '';
   document.getElementById('dateEntrySection').style.display   = opts.showDate ? 'block' : 'none';
-  document.getElementById('successCountdown').style.display   = opts.showSuccess ? 'block' : 'none';
-  document.getElementById('successCountdown').textContent     = '';
   document.getElementById('dateError').style.display          = 'none';
   document.getElementById('teacherDateInput').value           = opts.savedDate || '';
   document.getElementById('dateEntrySection').dataset.farMode = opts.farMode ? 'true' : 'false';
@@ -993,7 +932,8 @@ function initQuotes() {
   const qEl = document.getElementById('quoteText');
   if (qEl) qEl.textContent = '\u201c' + QUOTES[current] + '\u201d';
   buildDots();
-  setInterval(nextQuote, 120000);
+  if (quoteTimer) clearInterval(quoteTimer);
+  quoteTimer = setInterval(nextQuote, 120000);
 }
 </script>
 </body>
