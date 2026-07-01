@@ -739,7 +739,7 @@ function handleEligibilityResult(data) {
     // No InCharge date — write date entry form INTO the new tab.
     // Teacher fills in the date there; main tab stays in the background.
     const prefillDate = data.savedDate || '';
-    writeTabDateForm(pendingTab, teacher.name, schoolClass, pendingPDF.waNum, prefillDate);
+    writeTabDateForm(pendingTab, teacher, pendingPDF, schoolClass, prefillDate);
     return;
   }
 
@@ -775,85 +775,78 @@ function handleEligibilityResult(data) {
 // ══════════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════════
 // WRITE DATE FORM INTO NEW TAB (near_threshold, no InCharge date)
-// Teacher fills the date directly in the new tab.
+// Self-contained — all data embedded so no window.opener needed.
 // ══════════════════════════════════════════════════════════
-function writeTabDateForm(tab, teacherName, schoolClass, waNum, prefillDate) {
+function writeTabDateForm(tab, t, pdf, schoolClass, prefillDate) {
   if (!tab || tab.closed) return;
-  const formHtml =
+
+  // Serialise everything the tab needs into JSON so it can run independently
+  var tJson   = JSON.stringify({ name: t.name, school: t.school, classNum: t.classNum, section: t.section, typeCode: t.typeCode });
+  var pdfJson = JSON.stringify({ id: pdf.id, name: pdf.name, term: pdf.term, classNum: pdf.classNum, waNum: pdf.waNum, pdfType: pdf.pdfType });
+
+  var formHtml =
     '<div class="icon">\uD83D\uDD12</div>' +
     '<h2>Not yet unlocked</h2>' +
-    '<p>Namaskaram <strong>' + teacherName + '</strong>! It seems like WA ' + waNum +
+    '<p>Namaskaram <strong>' + t.name + '</strong>! It seems like WA ' + pdf.waNum +
     ' has not yet been conducted for <strong>' + schoolClass + '</strong>. ' +
     'Please check back once the test is conducted. If you have conducted this test, please select a date to proceed.</p>' +
     '<div style="margin:20px 0;text-align:left;">' +
-      '<label style="font-size:11px;font-weight:700;letter-spacing:1.5px;color:#d06b11;text-transform:uppercase;">Date test was conducted</label>' +
-      '<input type="date" id="tabDateInput" value="' + prefillDate + '" ' +
-        'style="width:100%;margin-top:8px;padding:12px;border:1.5px solid #e88f5e;border-radius:8px;font-size:14px;background:#fff8e6;color:#1a1a1a;box-sizing:border-box;" />' +
-      '<div id="tabDateError" style="display:none;color:#c0392b;font-size:13px;margin-top:8px;line-height:1.5;"></div>' +
+      '<label style="font-size:11px;font-weight:700;letter-spacing:1.5px;color:#d06b11;text-transform:uppercase;display:block;margin-bottom:8px;">Date test was conducted</label>' +
+      '<input type="date" id="tdi" value="' + prefillDate + '" ' +
+        'style="width:100%;padding:12px;border:1.5px solid #e88f5e;border-radius:8px;font-size:14px;background:#fff8e6;color:#1a1a1a;box-sizing:border-box;" />' +
+      '<div id="tde" style="display:none;color:#c0392b;font-size:13px;margin-top:8px;line-height:1.5;text-align:left;"></div>' +
     '</div>' +
-    '<button onclick="submitTabDate()" ' +
-      'style="width:100%;background:#d06b11;color:#fff;border:none;border-radius:8px;padding:14px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:10px;">Submit date</button>' +
+    '<button id="tdbtn" onclick="submitTabDate()" ' +
+      'style="width:100%;background:#d06b11;color:#fff;border:none;border-radius:8px;padding:14px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:10px;transition:background 0.15s,transform 0.1s,box-shadow 0.1s;" ' +
+      'onmousedown="this.style.transform=\'scale(0.97)\';this.style.boxShadow=\'inset 0 2px 5px rgba(0,0,0,0.25)\';" ' +
+      'onmouseup="this.style.transform=\'\';this.style.boxShadow=\'\';this.style.background=\'#d06b11\';" ' +
+      'onmouseleave="this.style.transform=\'\';this.style.boxShadow=\'\';this.style.background=\'#d06b11\';" ' +
+      'ontouchstart="this.style.transform=\'scale(0.97)\';this.style.background=\'#9b4932\';" ' +
+      'ontouchend="this.style.transform=\'\';this.style.background=\'#d06b11\';">Submit date</button>' +
     '<button onclick="window.close()" ' +
-      'style="width:100%;background:none;border:2px solid #e88f5e;color:#9b4932;border-radius:8px;padding:11px;font-size:14px;font-weight:700;cursor:pointer;">Close</button>' +
-    '<script>' +
-    'function submitTabDate(){' +
-      'var val=document.getElementById("tabDateInput").value;' +
-      'var errEl=document.getElementById("tabDateError");' +
+      'style="width:100%;background:none;border:2px solid #e88f5e;color:#9b4932;border-radius:8px;padding:11px;font-size:14px;font-weight:700;cursor:pointer;transition:background 0.15s;" ' +
+      'onmousedown="this.style.background=\'#fff0e0\';" ' +
+      'onmouseup="this.style.background=\'\';this.style.background=\'none\';" ' +
+      'onmouseleave="this.style.background=\'none\';">Close</button>' +
+    '<' + 'script>' +
+    'var EU="' + eu + '";' +
+    'var LU="' + lu + '";' +
+    'var TD=' + tJson + ';' +
+    'var PD=' + pdfJson + ';' +
+    'async function submitTabDate(){' +
+      'var val=document.getElementById("tdi").value;' +
+      'var errEl=document.getElementById("tde");' +
+      'var btn=document.getElementById("tdbtn");' +
       'errEl.style.display="none";' +
       'if(!val){errEl.textContent="Please enter a date.";errEl.style.display="block";return;}' +
-      'window.opener.submitTeacherDateFromTab(val);' +
+      'var entered=new Date(val+"T00:00:00");' +
+      'var today=new Date();today.setHours(0,0,0,0);' +
+      'if(entered>today){' +
+        'errEl.textContent="The date you entered is in the future. Please check back on or after that date.";' +
+        'errEl.style.display="block";' +
+        'return;' +
+      '}' +
+      'btn.textContent="Saving\u2026";btn.disabled=true;btn.style.opacity="0.7";' +
+      'try{await fetch(EU,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({action:"saveTeacherDate",school:TD.school,term:PD.term,classNum:PD.classNum,section:TD.section,waNum:PD.waNum,pdfType:PD.pdfType,typeCode:TD.typeCode,teacherName:TD.name,date:val})});}catch(e){}' +
+      'try{var lp=new URLSearchParams({name:TD.name,school:TD.school,"class":String(TD.classNum),section:TD.section,pdf:PD.name});await fetch(LU+"?"+lp.toString(),{method:"GET"});}catch(e){}' +
+      'var tod=new Date().toLocaleDateString("en-IN",{day:"numeric",month:"long",year:"numeric"});' +
+      'document.querySelector(".box").innerHTML=' +
+        '"<div class=\"icon\">\u2705<\/div>" +' +
+        '"<h2>All good!<\/h2>" +' +
+        '"<p>Have a great day! Viewed by <strong>"+TD.name+"<\/strong> on <strong>"+tod+"<\/strong>.<\/p>" +' +
+        '"<div class=\"countdown\" id=\"cd\">Opening in 3\u2026<\/div>";' +
+      'var secs=3;' +
+      'var tmr=setInterval(function(){' +
+        'secs--;' +
+        'if(secs<=0){clearInterval(tmr);window.location.href="https://drive.google.com/file/d/"+PD.id+"/view";}' +
+        'else{var el=document.getElementById("cd");if(el)el.textContent="Opening in "+secs+"\u2026";}' +
+      '},1000);' +
     '}' +
-    '<\/script>';
+    '<\/scr' + 'ipt>';
+
   updateTabContent(tab, formHtml);
 }
 
-// Called by the new tab's Submit button via window.opener
-async function submitTeacherDateFromTab(dateVal) {
-  if (!pendingPDF) return;
-  const entered = new Date(dateVal + 'T00:00:00');
-  const today   = new Date(); today.setHours(0,0,0,0);
-
-  // Date is in the future — show error inside the new tab
-  if (entered > today) {
-    if (pendingTab && !pendingTab.closed) {
-      try {
-        const errEl = pendingTab.document.getElementById('tabDateError');
-        if (errEl) {
-          errEl.textContent   = 'The date you entered is in the future. Please check back on or after that date.';
-          errEl.style.display = 'block';
-        }
-      } catch(e) {}
-    }
-    return;
-  }
-
-  // Valid date — save it, log the view, start countdown in the same tab
-  try {
-    const payload = {
-      action:      'saveTeacherDate',
-      school:      teacher.school,
-      term:        pendingPDF.term,
-      classNum:    pendingPDF.classNum,
-      section:     teacher.section,
-      waNum:       pendingPDF.waNum,
-      pdfType:     pendingPDF.pdfType,
-      typeCode:    teacher.typeCode,
-      teacherName: teacher.name,
-      date:        dateVal
-    };
-    await fetch(ELIGIBILITY_URL, {
-      method:  'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body:    JSON.stringify(payload)
-    });
-  } catch(e) {
-    // Save failed silently — still unlock since date is valid
-  }
-
-  logView(pendingPDF.name);
-  const todayStr = today.toLocaleDateString('en-IN', {day:'numeric', month:'long', year:'numeric'});
-  startCountdownAndOpen(pendingPDF.id, teacher.name, todayStr);
-}
 
 async function submitTeacherDate() {
   const dateVal  = document.getElementById('teacherDateInput').value;
