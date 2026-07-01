@@ -879,8 +879,14 @@ async function submitTeacherDate() {
 
   // Date is in the future
   if (entered > today) {
-    errEl.textContent   = 'The date you entered is in the future. Please check back on or after that date.';
-    errEl.style.display = 'block';
+    document.getElementById('dateEntrySection').style.display = 'none';
+    showResult({
+      icon:  '📅',
+      title: 'Not yet unlocked',
+      body:  'The date you entered is in the future. Please check back on or after that date.',
+      showDate:    false,
+      showSuccess: false
+    });
     return;
   }
 
@@ -895,15 +901,16 @@ async function submitTeacherDate() {
   // Near mode: valid date, save and unlock
   try {
     const payload = {
-      action:    'saveTeacherDate',
-      school:    teacher.school,
-      term:      pendingPDF.term,
-      classNum:  pendingPDF.classNum,
-      section:   teacher.section,
-      waNum:     pendingPDF.waNum,
-      pdfType:   pendingPDF.pdfType,
-      typeCode:  teacher.typeCode,
-      date:      dateVal
+      action:      'saveTeacherDate',
+      school:      teacher.school,
+      term:        pendingPDF.term,
+      classNum:    pendingPDF.classNum,
+      section:     teacher.section,
+      waNum:       pendingPDF.waNum,
+      pdfType:     pendingPDF.pdfType,
+      typeCode:    teacher.typeCode,
+      teacherName: teacher.name,
+      date:        dateVal
     };
     await fetch(ELIGIBILITY_URL, {
       method:  'POST',
