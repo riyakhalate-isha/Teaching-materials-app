@@ -736,10 +736,21 @@ function handleEligibilityResult(data) {
       return;
     }
 
-    // No InCharge date — write date entry form INTO the new tab.
-    // Teacher fills in the date there; main tab stays in the background.
-    const prefillDate = data.savedDate || '';
-    writeTabDateForm(pendingTab, teacher, pendingPDF, schoolClass, prefillDate);
+    // No InCharge date — show date form on main tab, waiting msg in new tab
+    updateTabContent(pendingTab,
+      '<div class="icon">🔒</div><h2>Waiting…</h2>' +
+      '<p>Please go back to the other tab and enter the date the test was conducted.</p>'
+    );
+    showResult({
+      icon:  '🔒',
+      title: 'Not yet unlocked',
+      body:  `Namaskaram <strong>${teacher.name}</strong>, it seems like this WA has not yet been conducted for <strong>${schoolClass}</strong>. Please check back once the test is conducted. If you have conducted this test, please select a date to proceed.`,
+      showDate:    true,
+      showSuccess: false,
+      savedDate:   data.savedDate || '',
+      gap:         data.gap,
+      farMode:     false
+    });
     return;
   }
 
