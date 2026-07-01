@@ -127,7 +127,6 @@
   .date-error { font-size: 12px; color: #c0392b; margin-top: 6px; display: none; }
 
   /* ── SUCCESS POPUP ───────────────────────────────────────── */
-  .success-countdown { font-size: 12px; color: #888; text-align: center; margin-top: 16px; }
 
   /* ── SPINNER POPUP ───────────────────────────────────────── */
 </style>
@@ -565,8 +564,7 @@ function clickPDF(fileId, fileName) {
       icon:  '⚠️',
       title: 'PDF name issue',
       body:  'It seems the PDF is not named correctly in the file. Please contact the CAT team.',
-      showDate:    false,
-      showSuccess: false
+      showDate:    false
     });
     return;
   }
@@ -637,8 +635,7 @@ async function proceedToEligibility() {
       icon:  '⚠️',
       title: 'Connection error',
       body:  'Could not reach the eligibility server. Please check your internet connection and try again.',
-      showDate:    false,
-      showSuccess: false
+      showDate:    false
     });
   }
 }
@@ -701,8 +698,7 @@ function handleEligibilityResult(data) {
       icon:  'ℹ️',
       title: 'Portion data not found',
       body:  `It seems that the portion data has not been filled for <strong>${schoolClass}</strong> for last Friday, <strong>${fridayStr}</strong>. Please contact InCharge teacher.`,
-      showDate:    false,
-      showSuccess: false
+      showDate:    false
     });
     return;
   }
@@ -714,8 +710,7 @@ function handleEligibilityResult(data) {
       icon:  '⚠️',
       title: 'PDF name issue',
       body:  'It seems the PDF is not named correctly in the file. Please contact the CAT team.',
-      showDate:    false,
-      showSuccess: false
+      showDate:    false
     });
     return;
   }
@@ -730,8 +725,7 @@ function handleEligibilityResult(data) {
         icon:  '📅',
         title: 'Not yet unlocked',
         body:  `Namaskaram <strong>${teacher.name}</strong>! The answer key for <strong>${schoolClass}</strong> is scheduled to unlock on <strong>${formatDisplayDate(data.savedDate)}</strong>, based on the test plan that was shared with the InCharge teacher. Please check back on or after that date.<br><br>If the test was conducted earlier than planned, please contact the CAT team to update the schedule.`,
-        showDate:    false,
-        showSuccess: false
+        showDate:    false
       });
       return;
     }
@@ -744,7 +738,6 @@ function handleEligibilityResult(data) {
       title: 'Not yet unlocked',
       body:  `Namaskaram <strong>${teacher.name}</strong>, it seems like this WA has not yet been conducted for <strong>${schoolClass}</strong>. Please check back once the test is conducted. If you have conducted this test, please select a date to proceed.`,
       showDate:    true,
-      showSuccess: false,
       savedDate:   data.savedDate || '',
       gap:         data.gap,
       farMode:     false
@@ -760,7 +753,6 @@ function handleEligibilityResult(data) {
       title: 'Not yet unlocked',
       body:  `Namaskaram <strong>${teacher.name}</strong>, it seems like this WA has not yet been conducted for <strong>${schoolClass}</strong>. Please check back once the test is conducted.`,
       showDate:    true,
-      showSuccess: false,
       savedDate:   data.savedDate || '',
       gap:         data.gap,
       farMode:     true
@@ -774,13 +766,16 @@ function handleEligibilityResult(data) {
     icon:  '🔒',
     title: 'Not yet unlocked',
     body:  `This answer key is not yet available for <strong>${schoolClass}</strong>. Please try again later.`,
-    showDate:    false,
-    showSuccess: false
+    showDate:    false
   });
 }
 
 // ══════════════════════════════════════════════════════════
 // TEACHER DATE SUBMISSION
+// ══════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════
+// WRITE DATE FORM INTO NEW TAB (near_threshold, no InCharge date)
+// Self-contained — all data embedded so no window.opener needed.
 // ══════════════════════════════════════════════════════════
 
 async function submitTeacherDate() {
@@ -808,8 +803,7 @@ async function submitTeacherDate() {
       icon:  '📅',
       title: 'Not yet unlocked',
       body:  'The date you entered is in the future. Please check back on or after that date.',
-      showDate:    false,
-      showSuccess: false
+      showDate:    false
     });
     return;
   }
