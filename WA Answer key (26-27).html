@@ -252,10 +252,23 @@
     <button class="change-btn" onclick="showChangeDetails()">✏ Change Details</button>
   </div>
 
-  <div class="tabbar">
-    <div class="tab active" onclick="switchTab(this,'answerkeys')">📋 Answer Keys</div>
-    <div class="tab" onclick="switchTab(this,'more')">📚 More Resources</div>
+  
+<div class="tabbar" style="align-items:center; flex-wrap:wrap; gap:8px;">
+  <div class="tab active" onclick="switchTab(this,'answerkeys')">📋 Answer Keys</div>
+  <div class="tab" onclick="switchTab(this,'more')">📚 More Resources</div>
+
+  <div style="margin-left:auto; padding:6px 0;">
+    <select id="termSelect" onchange="changeTerm(this.value)"
+      style="padding:8px 14px; border:1.5px solid #e88f5e; border-radius:8px;
+      background:#fff8e6; color:#9b4932; font-size:13px;
+      font-weight:700; cursor:pointer;">
+      <option value="1">Term 1</option>
+      <option value="2">Term 2</option>
+      <option value="3">Term 3</option>
+    </select>
   </div>
+</div>
+
 
   <div class="main">
 
@@ -313,7 +326,35 @@
 // CONSTANTS
 // ══════════════════════════════════════════════════════════
 const API_KEY        = 'AIzaSyCSjCQxd-CIlXDV3qxdchmhFQtKHpRbjPk';
-const ROOT_ID        = '1oR6SST8efnCHdc0KOumlydxB0a5fBg1J';
+const ROOT_IDS = {
+  1: '1oR6SST8efnCHdc0KOumlydxB0a5fBg1J',
+  2: '1ctNkgFZdjQFYnN_wtjerREEWklsLW-5Y'
+};
+
+function getDefaultTerm() {
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const day = now.getDate();
+
+  if (month >= 6 && (month < 9 || (month === 9 && day < 15))) {
+    return 1;
+  }
+
+  if ((month === 9 && day >= 15) || (month >= 10 && month <= 12)) {
+    return 2;
+  }
+
+  return 3;
+}
+
+let selectedTerm = getDefaultTerm();
+
+window.addEventListener('DOMContentLoaded', function() {
+  const termSelect = document.getElementById('termSelect');
+  if (termSelect) {
+    termSelect.value = String(selectedTerm);
+  }
+});
 const HIDE           = ['original ppts'];
 const LOGGING_URL    = 'https://script.google.com/macros/s/AKfycbxdfGfDoguPaSK9_1G-nEp2XoXnMv8U7tyt5DOBtlpSRL0xnxvswhANMKn7QI6zFWhTWA/exec';
 const ELIGIBILITY_URL= 'https://script.google.com/macros/s/AKfycbyTd1_Wb-aLHgenaXf6lMqJE28wV9GGGPK4C9DDsT0cnaR_KHT5kerUFwkbg6wLLPid4w/exec';
@@ -483,29 +524,79 @@ async function driveList(parentId) {
   return data.files || [];
 }
 
+let folderLoadVersion = 0;
+
+function changeTerm(term) {
+  selectedTerm = Number(term);
+  loadFolders();
+}
+
 async function loadFolders() {
+  const version = ++folderLoadVersion;
   const grid = document.getElementById('folder-grid');
+
+  document.getElementById('view-folders').style.display = 'block';
+  document.getElementById('view-files').style.display = 'none';
+
+  grid.innerHTML = `
+    <div class="state-box">
+      <div class="spinner"></div>
+      <div class="state-msg">Loading Term ${selectedTerm} answer keys…</div>
+    </div>`;
+
+  if (!ROOT_IDS[selectedTerm]) {
+    grid.innerHTML = `
+      <div class="coming-soon" style="grid-column:1/-1;">
+        <div class="cs-icon">📚</div>
+        <div class="cs-title">Term 3 — Coming Soon!</div>
+        <div class="cs-text">
+          Term 3 answer keys will be available here soon.<br>
+          You can select Term 1 or Term 2 above to view previous answer keys.
+        </div>
+      </div>`;
+    return;
+  }
+
   try {
-    const files   = await driveList(ROOT_ID);
-    // Only show the folder matching the teacher's selected class
+    const files = await driveList(ROOT_IDS[selectedTerm]);
+    if (version !== folderLoadVersion) return;
+
     const targetName = 'Class ' + teacher.classNum;
+
     const folders = files.filter(f =>
       f.mimeType === 'application/vnd.google-apps.folder' &&
       !HIDE.includes(f.name.toLowerCase()) &&
       f.name.trim() === targetName
     );
+
     if (folders.length === 0) {
-      grid.innerHTML = `<div class="state-box"><div class="state-msg">No folder found for ${targetName}</div><div class="state-hint">Make sure a folder named "${targetName}" exists in the Answer Keys folder on Google Drive.</div></div>`;
+      grid.innerHTML = `
+        <div class="state-box">
+          <div class="state-msg">No folder found for ${targetName}</div>
+          <div class="state-hint">
+            Check that the Term ${selectedTerm} Drive folder
+            contains a folder named "${targetName}".
+          </div>
+        </div>`;
       return;
     }
-    // Auto-open the matching class folder directly — no extra click needed
-    openFolder(folders[0].id, folders[0].name);
+
+    await openFolder(folders[0].id,
+      folders[0].name + ' — Term ' + selectedTerm,
+      version);
+
   } catch (err) {
-    grid.innerHTML = `<div class="error-box"><div class="error-title">Could not load folders</div><div class="error-text">${err.message}<br><br>Make sure the Answer Keys folder is set to "Anyone with the link can view" in Google Drive.</div></div>`;
+    if (version !== folderLoadVersion) return;
+    grid.innerHTML = `
+      <div class="error-box">
+        <div class="error-title">Could not load folders</div>
+        <div class="error-text">${err.message}</div>
+      </div>`;
   }
 }
 
-async function openFolder(folderId, folderName) {
+async function openFolder(folderId, folderName, version) {
+  if (version !== folderLoadVersion) return;
   document.getElementById('view-folders').style.display = 'none';
   document.getElementById('view-files').style.display   = 'block';
   document.getElementById('files-title').textContent    = folderName;
@@ -513,7 +604,9 @@ async function openFolder(folderId, folderName) {
   list.innerHTML = `<div class="state-box"><div class="spinner"></div><div class="state-msg">Loading answer keys…</div></div>`;
   try {
     const files = await driveList(folderId);
-    const pdfs  = files.filter(f => f.mimeType === 'application/pdf');
+    if (version !== folderLoadVersion) return;
+
+    const pdfs = files.filter(f => f.mimeType === 'application/pdf');
     if (pdfs.length === 0) {
       list.innerHTML = `<div class="state-box"><div class="state-msg">No PDFs found</div><div class="state-hint">Add PDF files to this folder in Google Drive and they will appear here automatically.</div></div>`;
       return;
@@ -538,6 +631,7 @@ async function openFolder(folderId, folderName) {
       list.appendChild(card);
     });
   } catch (err) {
+    if (version !== folderLoadVersion) return;
     list.innerHTML = `<div class="error-box"><div class="error-title">Could not load files</div><div class="error-text">${err.message}</div></div>`;
   }
 }
