@@ -548,10 +548,10 @@ async function loadFolders() {
     grid.innerHTML = `
       <div class="coming-soon" style="grid-column:1/-1;">
         <div class="cs-icon">📚</div>
-        <div class="cs-title">Term 3 — Coming Soon!</div>
+        <div class="cs-title">Term ${selectedTerm} — Coming Soon!</div>
         <div class="cs-text">
-          Term 3 answer keys will be available here soon.<br>
-          You can select Term 1 or Term 2 above to view previous answer keys.
+          Term ${selectedTerm} answer keys will be available here soon.<br>
+          You can select another term above to view available answer keys.
         </div>
       </div>`;
     return;
